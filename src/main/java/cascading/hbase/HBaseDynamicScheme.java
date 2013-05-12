@@ -52,14 +52,6 @@ public class HBaseDynamicScheme extends HBaseAbstractScheme {
 		}
     }
 
-    @SuppressWarnings("rawtypes")
-	private String getTableFromTap(HBaseTap tap) {
-    	Path tapPath = tap.getPath();
-    	String tapPathStr = tapPath.toString();
-    	// TODO: redefine exception
-    	return tapPathStr.split("://")[1];
-    }
-
     @Override
     public String[] getFamilyNames() {
 	return familyNames;
@@ -79,7 +71,7 @@ public class HBaseDynamicScheme extends HBaseAbstractScheme {
 			Tap<JobConf, RecordReader, OutputCollector> tap,
 			JobConf conf) {
 		setSinkInitFields(conf);
-		conf.set(TableOutputFormat.OUTPUT_TABLE, getTableFromTap((HBaseTap)tap));
+		conf.set(TableOutputFormat.OUTPUT_TABLE, ((HBaseTap)tap).getTable());
 	}
 
 	@Override

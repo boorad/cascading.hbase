@@ -151,72 +151,82 @@ public class HBaseTap extends Tap<JobConf, RecordReader, OutputCollector> {
 	}
 
 	public static HTable openTable(String tableName,
-			String... coulmnFamilyArray) throws IOException {
+			String... coulmnFamilyArray) {
 		Configuration config = HBaseConfiguration.create();
 
-		HBaseAdmin hbase = new HBaseAdmin(config);
-		byte[] tableNameByte = tableName.getBytes();
+		HBaseAdmin hbase;
+		HTable hTable = null;
 
-		if (hbase.tableExists(tableNameByte)) {
-			// table exists
-			LOG.debug("Table: " + tableName + " already exists!");
-			if (hbase.isTableEnabled(tableNameByte)) {
-				// table enabled
+		try {
+			hbase = new HBaseAdmin(config);
+			byte[] tableNameByte = tableName.getBytes();
 
-				HTable hTable = new HTable(config, tableNameByte);
+			if (hbase.tableExists(tableNameByte)) {
+				// table exists
+				LOG.debug("Table: " + tableName + " already exists!");
+				if (hbase.isTableEnabled(tableNameByte)) {
+					// table enabled
 
-				HColumnDescriptor[] hColumnDescriptorList = hTable
-						.getTableDescriptor().getColumnFamilies();
-				List<String> existColumnNamesList = new ArrayList<String>();
-				for (HColumnDescriptor hColumnDescriptor : hColumnDescriptorList) {
-					existColumnNamesList.add(hColumnDescriptor
-							.getNameAsString());
-				}
+					hTable = new HTable(config, tableNameByte);
 
-				// checking if all the column family are in the table, adding it
-				// if not.
-
-				List<String> missingColumnFamilies = new ArrayList<String>();
-				for (String coulmnFamily : coulmnFamilyArray) {
-					if (!existColumnNamesList.contains(coulmnFamily)) {
-						LOG.warn(coulmnFamily + " does not exist in "
-								+ tableName);
-						missingColumnFamilies.add(coulmnFamily);
+					HColumnDescriptor[] hColumnDescriptorList = hTable
+							.getTableDescriptor().getColumnFamilies();
+					List<String> existColumnNamesList = new ArrayList<String>();
+					for (HColumnDescriptor hColumnDescriptor : hColumnDescriptorList) {
+						existColumnNamesList.add(hColumnDescriptor
+								.getNameAsString());
 					}
-				}
 
-				if (!missingColumnFamilies.isEmpty()) {
-					hbase.disableTable(tableNameByte);
-					for (String coulmnFamily : missingColumnFamilies) {
-						hbase.addColumn(tableNameByte, new HColumnDescriptor(
-								coulmnFamily.getBytes()));
-						LOG.info(coulmnFamily + " added to " + tableName);
+					// checking if all the column family are in the table, adding it
+					// if not.
+
+					List<String> missingColumnFamilies = new ArrayList<String>();
+					for (String coulmnFamily : coulmnFamilyArray) {
+						if (!existColumnNamesList.contains(coulmnFamily)) {
+							LOG.warn(coulmnFamily + " does not exist in "
+									+ tableName);
+							missingColumnFamilies.add(coulmnFamily);
+						}
 					}
-					hbase.enableTable(tableNameByte);
-				}
 
-				return hTable;
+					if (!missingColumnFamilies.isEmpty()) {
+						hbase.disableTable(tableNameByte);
+						for (String coulmnFamily : missingColumnFamilies) {
+							hbase.addColumn(tableNameByte, new HColumnDescriptor(
+									coulmnFamily.getBytes()));
+							LOG.info(coulmnFamily + " added to " + tableName);
+						}
+						hbase.enableTable(tableNameByte);
+					}
+				} else {
+					// table exists but disabled
+					LOG.info("Table: " + tableName
+						+ " exists but disabled, deleting the table.");
+					hbase.deleteTable(tableNameByte);
+
+					// creating a new table
+					HTableDescriptor hTableDescriptor = new HTableDescriptor(tableNameByte);
+					for (String coulmnFamily : coulmnFamilyArray) {
+						HColumnDescriptor meta = new HColumnDescriptor(
+								coulmnFamily.getBytes());
+						hTableDescriptor.addFamily(meta);
+					}
+
+					hbase.createTable(hTableDescriptor);
+					LOG.info("New hBase table created with name: " + tableName);
+
+					hTable = new HTable(config, tableNameByte);
+				}
 			}
-
-			// table exists but disabled
-			LOG.info("Table: " + tableName
-					+ " exists but disabled, deleting the table.");
-			hbase.deleteTable(tableNameByte);
+		} catch (MasterNotRunningException e) {
+			e.printStackTrace();
+		} catch (ZooKeeperConnectionException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
 		}
 
-		// creating a new table
-		HTableDescriptor hTableDescriptor = new HTableDescriptor(tableNameByte);
-		for (String coulmnFamily : coulmnFamilyArray) {
-			HColumnDescriptor meta = new HColumnDescriptor(
-					coulmnFamily.getBytes());
-			hTableDescriptor.addFamily(meta);
-		}
-
-		hbase.createTable(hTableDescriptor);
-		LOG.info("New hBase table created with name: " + tableName);
-
-		return new HTable(config, tableNameByte);
-
+		return hTable;
 	}
 
 	public boolean resourceExists(JobConf conf) throws IOException {
@@ -350,5 +360,14 @@ public class HBaseTap extends Tap<JobConf, RecordReader, OutputCollector> {
 	public String getIdentifier() {
 		return id;
 	}
+
+    @SuppressWarnings("rawtypes")
+	public String getTable() {
+    	Path tapPath = getPath();
+    	String tapPathStr = tapPath.toString();
+    	// TODO: redefine exception
+    	return tapPathStr.split("://")[1];
+    }
+
 
 }
